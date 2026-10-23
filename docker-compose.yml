@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    image: pixdesk:latest
+    container_name: pixdesk
+    ports:
+      - "${PORT:-8787}:8787"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8787"
+      EXPORT_DIR: /exports
+    volumes:
+      - ./exports:/exports
+    restart: unless-stopped

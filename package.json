@@ -1,0 +1,29 @@
+{
+  "name": "pixdesk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local image tools for creators — background removal and Shorts thumbnails. UI based on Mosaic Lite by Cruip.",
+  "license": "GPL-3.0-or-later",
+  "author": "Leviatan Core",
+  "homepage": "https://github.com/LeviatanCore/Pixdesk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeviatanCore/Pixdesk.git"
+  },
+  "workspaces": [
+    "web",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,magenta \"npm run dev -w server\" \"npm run dev -w web\"",
+    "build": "npm run build -w web",
+    "start": "npm run start -w server",
+    "postinstall": "echo \"UI based on Mosaic Lite — https://github.com/cruip/tailwind-dashboard-template\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
