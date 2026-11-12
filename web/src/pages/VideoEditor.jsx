@@ -58,11 +58,20 @@ function VideoEditor() {
     music: false,
     page: true,
   });
+  const [clipdesk, setClipdesk] = useState({
+    available: false,
+    loading: false,
+    importing: false,
+    files: [],
+    reason: '',
+    outputHint: '',
+  });
 
   const videoRef = useRef(null);
   const musicRef = useRef(null);
   const rafRef = useRef(0);
   const playOriginRef = useRef({ wall: 0, head: 0 });
+  const clipdeskImportRef = useRef('');
 
   const duration = useMemo(() => totalDuration(pages), [pages]);
   const selected = pages.find((p) => p.id === selectedId) || null;
@@ -103,6 +112,20 @@ function VideoEditor() {
       if (music?.url) URL.revokeObjectURL(music.url);
       cancelAnimationFrame(rafRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    refreshClipdesk();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('from') !== 'clipdesk') return;
+    const name = params.get('name');
+    const output = params.get('output') || '';
+    if (!name) return;
+    const key = `${name}::${output}`;
+    if (clipdeskImportRef.current === key) return;
+    clipdeskImportRef.current = key;
+    importClipdeskFile(name, output);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -215,6 +238,79 @@ function VideoEditor() {
       setStatus(`Added ${created.length} page${created.length === 1 ? '' : 's'}`);
     } catch (err) {
       setError(err.message || 'Could not read video');
+    }
+  }
+
+  async function refreshClipdesk() {
+    setClipdesk((prev) => ({ ...prev, loading: true }));
+    try {
+      const statusRes = await fetch('/api/clipdesk/status');
+      const status = await statusRes.json();
+      if (!status.available) {
+        setClipdesk({
+          available: false,
+          loading: false,
+          importing: false,
+          files: [],
+          reason: status.reason || 'Clipdesk is offline',
+          outputHint: '',
+        });
+        return;
+      }
+      const filesRes = await fetch('/api/clipdesk/files');
+      const data = await filesRes.json();
+      if (!filesRes.ok) throw new Error(data.error || 'Could not list Clipdesk files');
+      setClipdesk({
+        available: true,
+        loading: false,
+        importing: false,
+        files: data.files || [],
+        reason: '',
+        outputHint: data.output_hint || data.output_dir || '',
+      });
+    } catch (err) {
+      setClipdesk({
+        available: false,
+        loading: false,
+        importing: false,
+        files: [],
+        reason: err.message || 'Clipdesk unreachable',
+        outputHint: '',
+      });
+    }
+  }
+
+  async function importClipdeskFile(name, output = '') {
+    if (!name) return;
+    setError('');
+    setClipdesk((prev) => ({ ...prev, importing: true }));
+    setStatus(`Importing from Clipdesk: ${name}`);
+    try {
+      const params = new URLSearchParams({ name });
+      if (output) params.set('output', output);
+      const res = await fetch(`/api/clipdesk/file?${params}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Could not fetch Clipdesk file');
+      }
+      const blob = await res.blob();
+      const type = blob.type || 'video/mp4';
+      const file = new File([blob], name, { type });
+      const page = await makePageFromFile(file);
+      setPages((prev) => [...prev, page]);
+      setSelectedId(page.id);
+      openPanel('page');
+      openPanel('media');
+      setStatus(`Added from Clipdesk · ${name}`);
+      // Clear deep-link params so refresh doesn't re-import.
+      if (window.location.search.includes('from=clipdesk')) {
+        window.history.replaceState({}, '', '/video');
+      }
+    } catch (err) {
+      setError(err.message || 'Clipdesk import failed');
+      setStatus('');
+    } finally {
+      setClipdesk((prev) => ({ ...prev, importing: false }));
     }
   }
 
@@ -529,6 +625,48 @@ function VideoEditor() {
                   }}
                 />
               </label>
+
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-700/60 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">From Clipdesk</p>
+                  <button
+                    type="button"
+                    className="text-[11px] text-violet-500"
+                    disabled={clipdesk.loading || clipdesk.importing}
+                    onClick={refreshClipdesk}
+                  >
+                    {clipdesk.loading ? '…' : 'Refresh'}
+                  </button>
+                </div>
+                {!clipdesk.available && (
+                  <p className="text-[11px] text-gray-400">
+                    {clipdesk.reason || 'Start Clipdesk on :8765 to import downloads.'}
+                  </p>
+                )}
+                {clipdesk.available && clipdesk.outputHint && (
+                  <p className="text-[10px] text-gray-400 truncate" title={clipdesk.outputHint}>
+                    {clipdesk.outputHint}
+                  </p>
+                )}
+                {clipdesk.available && !clipdesk.files.length && (
+                  <p className="text-[11px] text-gray-400">No videos in Clipdesk folder yet.</p>
+                )}
+                {clipdesk.files.slice(0, 8).map((file) => (
+                  <button
+                    key={file.name}
+                    type="button"
+                    disabled={clipdesk.importing}
+                    onClick={() => importClipdeskFile(file.name)}
+                    className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1.5 hover:border-violet-400 disabled:opacity-50"
+                  >
+                    <span className="block text-[11px] text-gray-800 dark:text-gray-100 truncate">{file.name}</span>
+                    <span className="block text-[10px] text-gray-400">{file.size_label}</span>
+                  </button>
+                ))}
+                {clipdesk.importing && (
+                  <p className="text-[11px] text-violet-500">Importing clip…</p>
+                )}
+              </div>
             </div>
           </CollapsiblePanel>
 

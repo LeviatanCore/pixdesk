@@ -27,6 +27,7 @@ Please keep this attribution when you fork or redistribute Pixdesk.
 - Hand off a cutout from Remove background into the thumbnail editor
 - Download PNG/JPG or save into a local `exports/` folder via the Node API
 - Video editor: page timeline, trim clips, music layer, video/music volume, export 16:9 or 9:16 MP4
+- **Clipdesk handoff**: import downloaded clips into the video editor (`CLIPDESK_URL`, default `http://127.0.0.1:8765`)
 - Docker-ready
 
 ## Requirements
@@ -44,6 +45,14 @@ npm run dev
 
 - UI: [http://127.0.0.1:5173](http://127.0.0.1:5173)
 - API: [http://127.0.0.1:8787](http://127.0.0.1:8787)
+
+### Clipdesk → Pixdesk
+
+1. Run Clipdesk (`./web` → :8765) and Pixdesk (`npm run dev`)
+2. Download a video in Clipdesk
+3. Click **Abrir en Pixdesk** (or in Pixdesk → Video editor → Add media → From Clipdesk)
+
+Optional: `CLIPDESK_URL=http://127.0.0.1:8765` for the Pixdesk server, `PIXDESK_URL=http://127.0.0.1:5173` for Clipdesk.
 
 ## Quick start (Docker)
 

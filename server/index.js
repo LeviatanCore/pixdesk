@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { exportVideoProject, ensureAspect, resolveQuality } from './videoExport.js';
+import { clipdeskStatus, listClipdeskVideos, streamClipdeskFile } from './clipdeskBridge.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -32,7 +33,30 @@ app.get('/api/health', async () => ({
   ok: true,
   name: 'pixdesk',
   exportDir: EXPORT_DIR,
+  clipdesk: await clipdeskStatus(),
 }));
+
+app.get('/api/clipdesk/status', async () => clipdeskStatus());
+
+app.get('/api/clipdesk/files', async (request, reply) => {
+  try {
+    return await listClipdeskVideos(request.query.output || '');
+  } catch (err) {
+    return reply.code(err.status || 502).send({ error: err.message || 'Clipdesk unreachable' });
+  }
+});
+
+app.get('/api/clipdesk/file', async (request, reply) => {
+  try {
+    const name = String(request.query.name || '');
+    const { contentType, body, filename } = await streamClipdeskFile(name, request.query.output || '');
+    reply.header('content-type', contentType);
+    reply.header('content-disposition', `inline; filename="${filename.replace(/"/g, '')}"`);
+    return reply.send(body);
+  } catch (err) {
+    return reply.code(err.status || 502).send({ error: err.message || 'Clipdesk file failed' });
+  }
+});
 
 app.get('/api/exports', async () => {
   const files = fs
