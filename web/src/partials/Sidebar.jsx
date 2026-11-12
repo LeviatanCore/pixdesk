@@ -136,6 +136,19 @@ function Sidebar({
                   </div>
                 </NavLink>
               </li>
+              <li className={itemClass(pathname.includes("video"))}>
+                <NavLink end to="/video" className={({ isActive }) => linkClass(isActive)}>
+                  <div className="flex items-center">
+                    <svg className={`shrink-0 fill-current ${pathname.includes("video") ? "text-violet-500" : "text-gray-400 dark:text-gray-500"}`} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                      <path d="M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 0 12.5v-9ZM6.5 5a.5.5 0 0 0-.5.5v5a.5.5 0 0 0 .8.4l3.5-2.5a.5.5 0 0 0 0-.8L6.8 5.1a.5.5 0 0 0-.3-.1Z" />
+                      <path d="M13 4.5a.5.5 0 0 1 .8-.4l1.5 1a.5.5 0 0 1 0 .8l-1.5 1a.5.5 0 0 1-.8-.4v-2Zm0 5a.5.5 0 0 1 .8-.4l1.5 1a.5.5 0 0 1 0 .8l-1.5 1a.5.5 0 0 1-.8-.4v-2Z" />
+                    </svg>
+                    <span className="text-sm font-medium ml-4 lg:opacity-0 lg:sidebar-expanded:opacity-100 2xl:opacity-100 duration-200">
+                      Video editor
+                    </span>
+                  </div>
+                </NavLink>
+              </li>
             </ul>
           </div>
         </div>

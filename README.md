@@ -7,7 +7,7 @@
 
 > Part of an open-source toolkit for **streamers, video editors, and content creators** — built to simplify workflows, automate repetitive tasks, and make content creation easier.
 
-**Pixdesk** is a local web app for image-only creator tasks: remove backgrounds and compose YouTube Shorts thumbnails (9:16). No account required. Files stay on your computer.
+**Pixdesk** is a local web app for creator media tasks: remove backgrounds, compose YouTube Shorts thumbnails (9:16), and edit short videos with a Canva-style page timeline, background music, and volume controls. No account required. Files stay on your computer.
 
 **Powered by [Leviatan Core](https://github.com/LeviatanCore).**
 
@@ -26,6 +26,7 @@ Please keep this attribution when you fork or redistribute Pixdesk.
 - **Shorts thumbnails** — 1080×1920 canvas with subject image, title, subtitle, and background color
 - Hand off a cutout from Remove background into the thumbnail editor
 - Download PNG/JPG or save into a local `exports/` folder via the Node API
+- Video editor: page timeline, trim clips, music layer, video/music volume, export 16:9 or 9:16 MP4
 - Docker-ready
 
 ## Requirements

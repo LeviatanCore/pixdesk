@@ -4,9 +4,11 @@ import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import sharp from 'sharp';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { exportVideoProject, ensureAspect, resolveQuality } from './videoExport.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -15,14 +17,15 @@ const WEB_DIST = path.join(ROOT, 'web', 'dist');
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const MAX_BYTES = 25 * 1024 * 1024;
+const MAX_VIDEO_BYTES = Number(process.env.MAX_VIDEO_BYTES || 800 * 1024 * 1024);
 
 fs.mkdirSync(EXPORT_DIR, { recursive: true });
 
-const app = Fastify({ logger: true, bodyLimit: MAX_BYTES });
+const app = Fastify({ logger: true, bodyLimit: MAX_VIDEO_BYTES });
 
 await app.register(cors, { origin: true });
 await app.register(multipart, {
-  limits: { fileSize: MAX_BYTES, files: 1 },
+  limits: { fileSize: MAX_VIDEO_BYTES, files: 40 },
 });
 
 app.get('/api/health', async () => ({
@@ -110,6 +113,87 @@ app.get('/exports/:name', async (request, reply) => {
     return reply.code(404).send({ error: 'Not found' });
   }
   return reply.send(fs.createReadStream(filePath));
+});
+
+app.post('/api/video/export', async (request, reply) => {
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pixdesk-video-'));
+  const saved = new Map();
+  let project = null;
+
+  try {
+    const parts = request.parts();
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const safe = `${randomUUID().slice(0, 8)}-${path.basename(part.filename || 'media.bin')}`;
+        const dest = path.join(workDir, safe);
+        await fs.promises.writeFile(dest, await part.toBuffer());
+        saved.set(part.fieldname, dest);
+      } else if (part.type === 'field' && part.fieldname === 'project') {
+        project = JSON.parse(String(part.value || '{}'));
+      }
+    }
+
+    if (!project?.pages?.length) {
+      return reply.code(400).send({ error: 'Project needs at least one page' });
+    }
+
+    const pages = project.pages.map((page, index) => {
+      const field = page.field || `page_${index}`;
+      const filePath = saved.get(field);
+      if (!filePath) throw new Error(`Missing media for page ${index + 1}`);
+      return {
+        path: filePath,
+        trimIn: page.trimIn,
+        trimOut: page.trimOut,
+        volume: page.volume,
+      };
+    });
+
+    let music = null;
+    if (project.music?.field) {
+      const musicPath = saved.get(project.music.field);
+      if (!musicPath) throw new Error('Missing music file');
+      music = {
+        path: musicPath,
+        volume: project.music.volume,
+        trimIn: project.music.trimIn,
+        trimOut: project.music.trimOut,
+        offset: project.music.offset,
+        volumeKeyframes: project.music.volumeKeyframes,
+      };
+    }
+
+    const aspect = ensureAspect(project.aspect);
+    const quality = project.quality || 'high';
+    const q = resolveQuality(quality, aspect);
+    const result = await exportVideoProject({
+      workDir,
+      aspect,
+      pages,
+      music,
+      quality,
+    });
+
+    const outName = result.name;
+    const outPath = path.join(EXPORT_DIR, outName);
+    fs.copyFileSync(result.path, outPath);
+    const stat = fs.statSync(outPath);
+
+    return {
+      ok: true,
+      name: outName,
+      size: stat.size,
+      url: `/exports/${encodeURIComponent(outName)}`,
+      quality,
+      width: q.width,
+      height: q.height,
+    };
+  } catch (err) {
+    request.log.error(err);
+    return reply.code(500).send({ error: err.message || 'Video export failed' });
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
 });
 
 if (fs.existsSync(WEB_DIST)) {

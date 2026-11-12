@@ -10,7 +10,7 @@ function Home() {
         Shorts thumbnails — files stay on your machine.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Link
           to="/remove-bg"
           className="block bg-white dark:bg-gray-800 rounded-xl p-6 shadow-xs border border-gray-200/60 dark:border-gray-700/60 hover:border-violet-400 dark:hover:border-violet-500 transition"
@@ -33,6 +33,19 @@ function Home() {
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Build a 1080×1920 (9:16) cover with subject image, title, subtitle, and background color.
+          </p>
+        </Link>
+
+        <Link
+          to="/video"
+          className="block bg-white dark:bg-gray-800 rounded-xl p-6 shadow-xs border border-gray-200/60 dark:border-gray-700/60 hover:border-violet-400 dark:hover:border-violet-500 transition"
+        >
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+            Video editor
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Timeline with pages, trim clips, background music layer, and volume controls.
+            Export 16:9 or 9:16 MP4.
           </p>
         </Link>
       </div>
