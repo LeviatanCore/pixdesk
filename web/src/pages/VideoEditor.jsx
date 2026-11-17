@@ -5,6 +5,7 @@ import VolumeEnvelope from '../components/VolumeEnvelope';
 import {
   ASPECTS,
   EXPORT_QUALITIES,
+  captureVideoFrame,
   formatTime,
   makeMusicFromFile,
   makePageFromFile,
@@ -18,6 +19,7 @@ import {
 } from '../lib/videoProject';
 
 const PX_PER_SEC = 48;
+const MIN_PAGE_DUR = 0.1;
 
 function VolumeSlider({ label, value, onChange }) {
   return (
@@ -72,6 +74,9 @@ function VideoEditor() {
   const rafRef = useRef(0);
   const playOriginRef = useRef({ wall: 0, head: 0 });
   const clipdeskImportRef = useRef('');
+  const pageResizeRef = useRef(null);
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
 
   const duration = useMemo(() => totalDuration(pages), [pages]);
   const selected = pages.find((p) => p.id === selectedId) || null;
@@ -108,9 +113,14 @@ function VideoEditor() {
 
   useEffect(() => {
     return () => {
-      pages.forEach((p) => URL.revokeObjectURL(p.url));
+      pages.forEach((p) => {
+        if (p.url) URL.revokeObjectURL(p.url);
+        if (p.posterUrl) URL.revokeObjectURL(p.posterUrl);
+      });
       if (music?.url) URL.revokeObjectURL(music.url);
       cancelAnimationFrame(rafRef.current);
+      window.removeEventListener('pointermove', onPageResizeMove);
+      window.removeEventListener('pointerup', onPageResizeUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -215,11 +225,75 @@ function VideoEditor() {
       prev.map((page) => {
         if (page.id !== id) return page;
         const next = { ...page, ...patch };
-        next.trimIn = Math.max(0, Math.min(next.trimIn, next.duration - 0.1));
-        next.trimOut = Math.max(next.trimIn + 0.1, Math.min(next.trimOut, next.duration));
+        next.trimIn = Math.max(0, Math.min(Number(next.trimIn) || 0, next.duration - MIN_PAGE_DUR));
+        next.trimOut = Math.max(
+          next.trimIn + MIN_PAGE_DUR,
+          Math.min(Number(next.trimOut) || next.duration, next.duration),
+        );
         return next;
       }),
     );
+  }
+
+  async function refreshPagePoster(id) {
+    const page = pagesRef.current.find((p) => p.id === id);
+    if (!page?.url) return;
+    try {
+      const posterUrl = await captureVideoFrame(page.url, page.trimIn || 0.15);
+      setPages((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          if (p.posterUrl && p.posterUrl !== posterUrl) URL.revokeObjectURL(p.posterUrl);
+          return { ...p, posterUrl };
+        }),
+      );
+    } catch {
+      /* keep previous poster */
+    }
+  }
+
+  function onPageResizeMove(e) {
+    const drag = pageResizeRef.current;
+    if (!drag) return;
+    const dt = (e.clientX - drag.startX) / PX_PER_SEC;
+    if (drag.edge === 'end') {
+      const trimOut = Math.max(
+        drag.trimIn + MIN_PAGE_DUR,
+        Math.min(drag.duration, drag.trimOut + dt),
+      );
+      updatePage(drag.pageId, { trimOut });
+    } else {
+      const trimIn = Math.max(
+        0,
+        Math.min(drag.trimOut - MIN_PAGE_DUR, drag.trimIn + dt),
+      );
+      updatePage(drag.pageId, { trimIn });
+    }
+  }
+
+  function onPageResizeUp() {
+    const drag = pageResizeRef.current;
+    pageResizeRef.current = null;
+    window.removeEventListener('pointermove', onPageResizeMove);
+    window.removeEventListener('pointerup', onPageResizeUp);
+    if (drag?.edge === 'start') refreshPagePoster(drag.pageId);
+  }
+
+  function startPageResize(e, page, edge) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedId(page.id);
+    openPanel('page');
+    pageResizeRef.current = {
+      pageId: page.id,
+      edge,
+      startX: e.clientX,
+      trimIn: page.trimIn,
+      trimOut: page.trimOut,
+      duration: page.duration,
+    };
+    window.addEventListener('pointermove', onPageResizeMove);
+    window.addEventListener('pointerup', onPageResizeUp);
   }
 
   async function onAddVideos(fileList) {
@@ -333,12 +407,18 @@ function VideoEditor() {
   }
 
   function removePage(id) {
-    setPages((prev) => {
-      const target = prev.find((p) => p.id === id);
-      if (target?.url) URL.revokeObjectURL(target.url);
-      return prev.filter((p) => p.id !== id);
-    });
-    if (selectedId === id) setSelectedId(null);
+    const index = pages.findIndex((p) => p.id === id);
+    if (index < 0) return;
+    const target = pages[index];
+    if (target?.url) URL.revokeObjectURL(target.url);
+    if (target?.posterUrl) URL.revokeObjectURL(target.posterUrl);
+    const next = pages.filter((p) => p.id !== id);
+    const neighbor = next[Math.min(index, next.length - 1)] || null;
+    setPages(next);
+    setSelectedId((cur) => (cur === id ? neighbor?.id || null : cur));
+    if (neighbor) openPanel('page');
+    setPlaying(false);
+    setStatus('Page deleted');
   }
 
   function movePage(id, dir) {
@@ -451,31 +531,72 @@ function VideoEditor() {
             (acc, page, index) => {
               const left = acc.offset;
               const width = pageDuration(page) * PX_PER_SEC;
+              const poster = page.posterUrl;
               acc.nodes.push(
-                <button
+                <div
                   key={page.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(page.id);
-                    openPanel('page');
-                    seekTo(left + 0.01);
-                  }}
-                  className={`absolute top-2 bottom-2 rounded-md overflow-hidden border text-left px-2 py-1 ${
+                  className={`absolute top-2 bottom-2 rounded-md overflow-hidden border group ${
                     selectedId === page.id
                       ? 'border-violet-500 ring-2 ring-violet-500/30'
                       : 'border-gray-300 dark:border-gray-600'
                   }`}
                   style={{
                     left,
-                    width: Math.max(36, width),
-                    background:
-                      'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(15,23,42,0.85)), #1f2937',
+                    width: Math.max(28, width),
+                    backgroundColor: '#1f2937',
+                    backgroundImage: poster
+                      ? `linear-gradient(180deg, rgba(15,23,42,0.15), rgba(15,23,42,0.72)), url(${poster})`
+                      : 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(15,23,42,0.85))',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
                   }}
-                  title={page.name}
                 >
-                  <span className="block text-[10px] text-white/90 truncate">Página {index + 1}</span>
-                  <span className="block text-[10px] text-white/60">{formatTime(pageDuration(page))}</span>
-                </button>,
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedId(page.id);
+                      openPanel('page');
+                      seekTo(left + 0.01);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removePage(page.id);
+                    }}
+                    className="absolute inset-0 text-left px-2 py-1 pr-7 pl-2"
+                    title={`${page.name} — drag edges to trim · double-click to delete`}
+                  >
+                    <span className="block text-[10px] text-white drop-shadow truncate">Página {index + 1}</span>
+                    <span className="block text-[10px] text-white/80 drop-shadow">{formatTime(pageDuration(page))}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute top-0.5 left-0 z-20 h-full w-2 cursor-ew-resize bg-white/0 hover:bg-violet-400/70"
+                    title="Trim start (make shorter/longer)"
+                    aria-label={`Resize start of page ${index + 1}`}
+                    onPointerDown={(e) => startPageResize(e, page, 'start')}
+                  />
+                  <button
+                    type="button"
+                    className="absolute top-0.5 right-0 z-20 h-full w-2 cursor-ew-resize bg-white/0 hover:bg-violet-400/70"
+                    title="Trim end (make shorter/longer)"
+                    aria-label={`Resize end of page ${index + 1}`}
+                    onPointerDown={(e) => startPageResize(e, page, 'end')}
+                  />
+                  <button
+                    type="button"
+                    className="absolute top-1 right-2.5 z-10 w-5 h-5 rounded bg-black/55 text-white/90 text-xs leading-none hover:bg-red-600"
+                    title="Delete page"
+                    aria-label={`Delete page ${index + 1}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removePage(page.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>,
               );
               acc.offset += width;
               return acc;
@@ -786,6 +907,7 @@ function VideoEditor() {
                     step="0.1"
                     value={Number(selected.trimIn.toFixed(2))}
                     onChange={(e) => updatePage(selected.id, { trimIn: Number(e.target.value) })}
+                    onBlur={() => refreshPagePoster(selected.id)}
                     className="mt-1 form-input w-full"
                   />
                 </label>
@@ -803,7 +925,15 @@ function VideoEditor() {
                 </label>
                 <p className="text-xs text-gray-400">
                   Keep {formatTime(pageDuration(selected))} of {formatTime(selected.duration)}
+                  {' '}· drag page edges on the timeline to trim
                 </p>
+                <button
+                  type="button"
+                  className="text-xs text-violet-600 dark:text-violet-300"
+                  onClick={() => refreshPagePoster(selected.id)}
+                >
+                  Refresh thumbnail from start
+                </button>
                 <VolumeSlider
                   label="Video volume"
                   value={selected.volume}
@@ -826,7 +956,7 @@ function VideoEditor() {
                   </button>
                   <button
                     type="button"
-                    className="btn text-sm text-red-500 ml-auto"
+                    className="btn text-sm text-red-500 border border-red-500/40 ml-auto"
                     onClick={() => removePage(selected.id)}
                   >
                     Delete page
@@ -926,7 +1056,7 @@ function VideoEditor() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Layers</h2>
               <p className="text-xs text-gray-400">
-                Pages + music envelope · click add · drag move · dbl-click delete
+                Pages: edge-drag trim · thumbnail · × delete · Music: drag points
               </p>
             </div>
             {timelineBlock}

@@ -7,10 +7,12 @@ import {
 
 import './css/style.css';
 
+import { AuthProvider } from './context/AuthContext';
 import Home from './pages/Home';
 import RemoveBg from './pages/RemoveBg';
 import Thumbnails from './pages/Thumbnails';
 import VideoEditor from './pages/VideoEditor';
+import AuthCallback from './pages/AuthCallback';
 
 function App() {
   const location = useLocation();
@@ -22,12 +24,15 @@ function App() {
   }, [location.pathname]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/remove-bg" element={<RemoveBg />} />
-      <Route path="/thumbnails" element={<Thumbnails />} />
-      <Route path="/video" element={<VideoEditor />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/remove-bg" element={<RemoveBg />} />
+        <Route path="/thumbnails" element={<Thumbnails />} />
+        <Route path="/video" element={<VideoEditor />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+      </Routes>
+    </AuthProvider>
   );
 }
 

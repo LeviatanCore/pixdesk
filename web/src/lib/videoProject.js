@@ -80,14 +80,94 @@ export function readMediaDuration(file) {
   });
 }
 
+/** Grab a small JPEG poster from a video object URL at `atTime` seconds. */
+export function captureVideoFrame(url, atTime = 0.15) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    let settled = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      video.removeAttribute('src');
+      video.load();
+      reject(err instanceof Error ? err : new Error('Could not capture frame'));
+    };
+
+    const finish = (posterUrl) => {
+      if (settled) return;
+      settled = true;
+      video.removeAttribute('src');
+      video.load();
+      resolve(posterUrl);
+    };
+
+    video.onerror = () => fail(new Error('Could not load video for thumbnail'));
+    video.onloadeddata = () => {
+      const dur = Number(video.duration) || 1;
+      const t = Math.min(Math.max(0.05, Number(atTime) || 0.15), Math.max(0.05, dur - 0.05));
+      try {
+        video.currentTime = t;
+      } catch (err) {
+        fail(err);
+      }
+    };
+    video.onseeked = () => {
+      try {
+        const w = video.videoWidth || 320;
+        const h = video.videoHeight || 180;
+        if (!w || !h) {
+          fail(new Error('Empty video frame'));
+          return;
+        }
+        const maxW = 320;
+        const scale = Math.min(1, maxW / w);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          fail(new Error('No canvas'));
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              fail(new Error('Could not encode thumbnail'));
+              return;
+            }
+            finish(URL.createObjectURL(blob));
+          },
+          'image/jpeg',
+          0.72,
+        );
+      } catch (err) {
+        fail(err);
+      }
+    };
+    video.src = url;
+  });
+}
+
 export async function makePageFromFile(file) {
   const duration = await readMediaDuration(file);
   const url = URL.createObjectURL(file);
+  let posterUrl = null;
+  try {
+    posterUrl = await captureVideoFrame(url, Math.min(0.25, Math.max(0.05, duration * 0.02)));
+  } catch {
+    posterUrl = null;
+  }
   return {
     id: uid('page'),
     name: file.name,
     file,
     url,
+    posterUrl,
     duration,
     trimIn: 0,
     trimOut: duration,

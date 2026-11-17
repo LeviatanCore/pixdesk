@@ -1,4 +1,5 @@
 import React from 'react';
+import AccountMenu from '../components/AccountMenu';
 import ThemeToggle from '../components/ThemeToggle';
 import logo from '../images/leviatan-core-logo.jpg';
 
@@ -38,6 +39,7 @@ function Header({
 
           <div className="flex items-center space-x-3">
             <ThemeToggle />
+            <AccountMenu />
           </div>
         </div>
       </div>
